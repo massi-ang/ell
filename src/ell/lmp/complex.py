@@ -5,14 +5,22 @@ from ell.types import Message, ContentBlock
 from ell.types.message import LMP, InvocableLM, LMPParams, MessageOrDict, _lstr_generic
 from ell.types.studio import LMPType
 from ell.util._warnings import _warnings
-from ell.util.api import  call
+from ell.util.api import call
 from ell.util.verbosity import compute_color, model_usage_logger_pre
 
 
 from functools import wraps
 from typing import Any, Dict, Optional, List, Callable, Union
 
-def complex(model: str, client: Optional[Any] = None, exempt_from_tracking=False, tools: Optional[List[Callable]] = None, post_callback: Optional[Callable] = None, **api_params):
+
+def complex(
+    model: str,
+    client: Optional[Any] = None,
+    exempt_from_tracking=False,
+    tools: Optional[List[Callable]] = None,
+    post_callback: Optional[Callable] = None,
+    **api_params,
+):
     """
     A sophisticated language model programming decorator for complex LLM interactions.
 
@@ -84,7 +92,7 @@ def complex(model: str, client: Optional[Any] = None, exempt_from_tracking=False
                ell.user(f"Write a short story based on this prompt: {prompt}")
            ]
 
-       story : ell.Message = generate_story("A robot discovers emotions") 
+       story : ell.Message = generate_story("A robot discovers emotions")
        print(story.text)  # Access the text content of the last message
 
     2. Multi-turn Conversation:
@@ -124,11 +132,11 @@ def complex(model: str, client: Optional[Any] = None, exempt_from_tracking=False
            ell.user("What's the weather like in New York?")
        ]
        response : ell.Message = weather_assistant(conversation)
-       
+
        if response.tool_calls:
            tool_results = response.call_tools_and_collect_as_message()
            print("Tool results:", tool_results.text)
-           
+
            # Continue the conversation with tool results
            final_response = weather_assistant(conversation + [response, tool_results])
            print("Final response:", final_response.text)
@@ -214,18 +222,16 @@ def complex(model: str, client: Optional[Any] = None, exempt_from_tracking=False
     """
     default_client_from_decorator = client
 
-
     def parameterized_lm_decorator(
         prompt: LMP,
     ) -> Callable[..., Union[List[Message], Message]]:
         color = compute_color(prompt)
         _warnings(model, prompt, default_client_from_decorator)
 
-            
         @wraps(prompt)
         def model_call(
             *fn_args,
-            _invocation_origin : str = None,
+            _invocation_origin: str = None,
             client: Optional[Any] = None,
             lm_params: Optional[LMPParams] = {},
             invocation_api_params=False,
@@ -233,20 +239,32 @@ def complex(model: str, client: Optional[Any] = None, exempt_from_tracking=False
         ) -> _lstr_generic:
             res = prompt(*fn_args, **fn_kwargs)
 
-            assert exempt_from_tracking or _invocation_origin is not None, "Invocation origin is required when using a tracked LMP"
+            assert (
+                exempt_from_tracking or _invocation_origin is not None
+            ), "Invocation origin is required when using a tracked LMP"
             messages = _get_messages(res, prompt)
 
-            if config.verbose and not exempt_from_tracking: model_usage_logger_pre(prompt, fn_args, fn_kwargs, "notimplemented", messages, color)
+            if config.verbose and not exempt_from_tracking:
+                model_usage_logger_pre(
+                    prompt, fn_args, fn_kwargs, "notimplemented", messages, color
+                )
 
-            (result, _api_params, metadata) = call(model=model, messages=messages, api_params={**config.default_lm_params, **api_params, **lm_params}, client=client or default_client_from_decorator, _invocation_origin=_invocation_origin, _exempt_from_tracking=exempt_from_tracking, _logging_color=color, _name=prompt.__name__, tools=tools)
-        
+            (result, _api_params, metadata) = call(
+                model=model,
+                messages=messages,
+                api_params={**config.default_lm_params, **api_params, **lm_params},
+                client=client or default_client_from_decorator,
+                _invocation_origin=_invocation_origin,
+                _exempt_from_tracking=exempt_from_tracking,
+                _logging_color=color,
+                _name=prompt.__name__,
+                tools=tools,
+            )
+
             result = post_callback(result) if post_callback else result
-            
 
             return result, api_params, metadata
 
-
-  
         # TODO: # we'll deal with type safety here later
         model_call.__ell_api_params__ = api_params
         model_call.__ell_func__ = prompt
@@ -259,15 +277,23 @@ def complex(model: str, client: Optional[Any] = None, exempt_from_tracking=False
             return model_call
         else:
             return _track(model_call, forced_dependencies=dict(tools=tools))
+
     return parameterized_lm_decorator
 
-def _get_messages(prompt_ret: Union[str, list[MessageOrDict]], prompt: LMP) -> list[Message]:
+
+def _get_messages(
+    prompt_ret: Union[str, list[MessageOrDict]], prompt: LMP
+) -> list[Message]:
     """
     Helper function to convert the output of an LMP into a list of Messages.
     """
     if isinstance(prompt_ret, str):
         has_system_prompt = prompt.__doc__ is not None and prompt.__doc__.strip() != ""
-        messages =     [Message(role="system", content=[ContentBlock(text=_lstr(prompt.__doc__) )])] if has_system_prompt else []
+        messages = (
+            [Message(role="system", content=[ContentBlock(text=_lstr(prompt.__doc__))])]
+            if has_system_prompt
+            else []
+        )
         return messages + [
             Message(role="user", content=[ContentBlock(text=prompt_ret)])
         ]

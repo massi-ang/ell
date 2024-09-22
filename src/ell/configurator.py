@@ -9,18 +9,47 @@ from ell.store import Store
 from ell.provider import Provider
 
 _config_logger = logging.getLogger(__name__)
+
+
 class Config(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    registry: Dict[str, openai.Client] = Field(default_factory=dict, description="A dictionary mapping model names to OpenAI clients.")
-    verbose: bool = Field(default=False, description="If True, enables verbose logging.")
-    wrapped_logging: bool = Field(default=True, description="If True, enables wrapped logging for better readability.")
-    override_wrapped_logging_width: Optional[int] = Field(default=None, description="If set, overrides the default width for wrapped logging.")
-    store: Optional[Store] = Field(default=None, description="An optional Store instance for persistence.")
-    autocommit: bool = Field(default=False, description="If True, enables automatic committing of changes to the store.")
-    lazy_versioning: bool = Field(default=True, description="If True, enables lazy versioning for improved performance.")
-    default_lm_params: Dict[str, Any] = Field(default_factory=dict, description="Default parameters for language models.")
-    default_client: Optional[openai.Client] = Field(default=None, description="The default OpenAI client used when a specific model client is not found.")
-    providers: Dict[Type, Type[Provider]] = Field(default_factory=dict, description="A dictionary mapping client types to provider classes.")
+    registry: Dict[str, openai.Client] = Field(
+        default_factory=dict,
+        description="A dictionary mapping model names to OpenAI clients.",
+    )
+    verbose: bool = Field(
+        default=False, description="If True, enables verbose logging."
+    )
+    wrapped_logging: bool = Field(
+        default=True,
+        description="If True, enables wrapped logging for better readability.",
+    )
+    override_wrapped_logging_width: Optional[int] = Field(
+        default=None,
+        description="If set, overrides the default width for wrapped logging.",
+    )
+    store: Optional[Store] = Field(
+        default=None, description="An optional Store instance for persistence."
+    )
+    autocommit: bool = Field(
+        default=False,
+        description="If True, enables automatic committing of changes to the store.",
+    )
+    lazy_versioning: bool = Field(
+        default=True,
+        description="If True, enables lazy versioning for improved performance.",
+    )
+    default_lm_params: Dict[str, Any] = Field(
+        default_factory=dict, description="Default parameters for language models."
+    )
+    default_client: Optional[openai.Client] = Field(
+        default=None,
+        description="The default OpenAI client used when a specific model client is not found.",
+    )
+    providers: Dict[Type, Type[Provider]] = Field(
+        default_factory=dict,
+        description="A dictionary mapping client types to provider classes.",
+    )
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -39,7 +68,7 @@ class Config(BaseModel):
         with self._lock:
             self.registry[model_name] = client
 
-    @property 
+    @property
     def has_store(self) -> bool:
         """
         Check if a store is set.
@@ -57,14 +86,16 @@ class Config(BaseModel):
         :param overrides: A dictionary of model names to OpenAI clients to override.
         :type overrides: Dict[str, openai.Client]
         """
-        if not hasattr(self._local, 'stack'):
+        if not hasattr(self._local, "stack"):
             self._local.stack = []
-        
+
         with self._lock:
-            current_registry = self._local.stack[-1] if self._local.stack else self.registry
+            current_registry = (
+                self._local.stack[-1] if self._local.stack else self.registry
+            )
             new_registry = current_registry.copy()
             new_registry.update(overrides)
-        
+
         self._local.stack.append(new_registry)
         try:
             yield
@@ -80,14 +111,21 @@ class Config(BaseModel):
         :return: The OpenAI client for the specified model, or None if not found.
         :rtype: Optional[openai.Client]
         """
-        current_registry = self._local.stack[-1] if hasattr(self._local, 'stack') and self._local.stack else self.registry
+        current_registry = (
+            self._local.stack[-1]
+            if hasattr(self._local, "stack") and self._local.stack
+            else self.registry
+        )
         client = current_registry.get(model_name)
         fallback = False
         if model_name not in current_registry.keys():
             warning_message = f"Warning: A default provider for model '{model_name}' could not be found. Falling back to default OpenAI client from environment variables."
             if self.verbose:
                 from colorama import Fore, Style
-                _config_logger.warning(f"{Fore.LIGHTYELLOW_EX}{warning_message}{Style.RESET_ALL}")
+
+                _config_logger.warning(
+                    f"{Fore.LIGHTYELLOW_EX}{warning_message}{Style.RESET_ALL}"
+                )
             else:
                 _config_logger.debug(warning_message)
             client = self.default_client
@@ -100,9 +138,9 @@ class Config(BaseModel):
         """
         with self._lock:
             self.__init__()
-            if hasattr(self._local, 'stack'):
+            if hasattr(self._local, "stack"):
                 del self._local.stack
-    
+
     def set_store(self, store: Union[Store, str], autocommit: bool = True) -> None:
         """
         Set the store for the configuration.
@@ -114,6 +152,7 @@ class Config(BaseModel):
         """
         if isinstance(store, str):
             from ell.stores.sql import SQLiteStore
+
             self.store = SQLiteStore(store)
         else:
             self.store = store
@@ -127,7 +166,7 @@ class Config(BaseModel):
         :rtype: Store
         """
         return self.store
-    
+
     def set_default_lm_params(self, **params: Dict[str, Any]) -> None:
         """
         Set default parameters for language models.
@@ -136,8 +175,6 @@ class Config(BaseModel):
         :type params: Dict[str, Any]
         """
         self.default_lm_params = params
-    
-
 
     def set_default_client(self, client: openai.Client) -> None:
         """
@@ -167,10 +204,20 @@ class Config(BaseModel):
         :return: The provider class for the specified client, or None if not found.
         :rtype: Optional[Type[AbstractProvider]]
         """
-        return next((provider for client_type, provider in self.providers.items() if isinstance(client, client_type)), None)
+
+        return next(
+            (
+                provider
+                for client_type, provider in self.providers.items()
+                if str(type(client)) == str(client_type)
+            ),
+            None,
+        )
+
 
 # Singleton instance
 config = Config()
+
 
 def init(
     store: Optional[Union[Store, str]] = None,
@@ -178,7 +225,7 @@ def init(
     autocommit: bool = True,
     lazy_versioning: bool = True,
     default_lm_params: Optional[Dict[str, Any]] = None,
-    default_openai_client: Optional[openai.Client] = None
+    default_openai_client: Optional[openai.Client] = None,
 ) -> None:
     """
     Initialize the ELL configuration with various settings.
@@ -205,23 +252,25 @@ def init(
     if default_lm_params is not None:
         config.set_default_lm_params(**default_lm_params)
 
-
-
     if default_openai_client is not None:
         config.set_default_client(default_openai_client)
+
 
 # Existing helper functions
 @wraps(config.get_store)
 def get_store() -> Store:
     return config.get_store()
 
+
 @wraps(config.set_store)
 def set_store(*args, **kwargs) -> None:
     return config.set_store(*args, **kwargs)
 
+
 @wraps(config.set_default_lm_params)
 def set_default_lm_params(*args, **kwargs) -> None:
     return config.set_default_lm_params(*args, **kwargs)
+
 
 # You can add more helper functions here if needed
 @wraps(config.register_provider)
