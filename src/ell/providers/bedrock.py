@@ -8,14 +8,12 @@ from ell.types._lstr import _lstr
 import json
 from ell.configurator import config, register_provider
 from ell.types.message import LMP
-from ell.util.serialization import serialize_image
 from io import BytesIO
 
 try:
     import boto3
 
     class BedrockProvider(Provider):
-
         # XXX: This content block conversion etc might need to happen on a per model basis for providers like groq etc. We will think about this at a future date.
         @staticmethod
         def content_block_to_bedrock_converse_format(
@@ -100,6 +98,21 @@ try:
                 for message in messages
                 if message.role != "system"
             ]
+            if not model.startswith("anthropic"):
+                if (
+                    len(
+                        [
+                            m
+                            for m in converse_messages
+                            if len([c for c in m["contents"] if c.get("images", None)])
+                            > 0
+                        ]
+                    )
+                    > 0
+                ):
+                    raise ValueError("Images are not supported for this model")
+            # TODO: check which models support system prompt.
+            # Change into normal user prompt for others
             final_call_params["system"] = [
                 {"text": message.content[0].text}
                 for message in messages
@@ -171,7 +184,6 @@ try:
             else:
                 response = call_result.response
 
-            print(response)
             tracked_results = []
             for chunk in response:
                 usage = {}
@@ -180,7 +192,6 @@ try:
                 usage["total_tokens"] = chunk["usage"].get("totalTokens", 0)
 
                 metadata = {"usage": usage}
-                print(metadata)
                 content = []
 
                 if call_result.actual_streaming:
